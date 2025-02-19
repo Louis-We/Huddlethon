@@ -8,7 +8,6 @@ app = FastAPI()
 region_name = 'eu-west-1'
 foundation_model = 'anthropic.claude-3-sonnet-20240229-v1:0'
 knowledge_base_id = 'WNCKQMM4ZA'
-data_source_id = 'FAADRXS34P'
 
 session = boto3.Session(profile_name="AdministratorAccess-940482414003")  # Use your AWS SSO profile name
 bedrock_client = session.client('bedrock-runtime', region_name=region_name)
@@ -44,13 +43,13 @@ def retrieve_documents(question: str, numberOfResults: int):
         processed_results = []
         for file_name, chunks in grouped_results.items():
             summary = text_processor(
-                f"Based on the following chunks, explain why this file: {file_name} is relevant to this question: {question}. Answer it in 50 words or less.",
-                " ".join(chunks)
+                f"You must generate a summary of the below text chunks with 50 words or less, based strictly on the question: '{question}'.Your response must contain **only** the summarized content—absolutely no introductory phrases, explanations, meta-comments, or concluding statements.Do not include words or phrases such as 'Here is a summary,' 'Based on the text,' 'The following is a summary,' or any equivalent variation.**Directly output the summary text itself without any preface or extra wording.**Ensure the summary is complete and not cut off.If the retrieved text is too long, condense the key points fully while maintaining coherence and completeness.Do not generate partial or incomplete summaries under any circumstances.Your response must follow these rules **exactly and without deviation**.Any output that includes unnecessary words, incomplete information, or missing key details is unacceptable.Strictly comply with these requirements and return only the final summarized text.",
+                "\n\n".join(chunks)
             )
             relevant_texts = []
             for chunk in chunks[:2]:  # Pick at least 2 chunks per file
                 relevant_text = text_processor(
-                    f"Find the paragraph from the text below that is most relevant to this question: {question}. Do NOT add any extra words before or after it.",
+                    f"Extract the most relevant paragraph from the text below that directly answers this question: '{question}'. Do not add any extra words before or after it.",
                     chunk
                 )
                 relevant_texts.append(f"...{relevant_text}...")
@@ -69,8 +68,8 @@ def text_processor(prompt, text):
     response = bedrock_client.invoke_model(
         modelId=foundation_model,
         body=json.dumps({
-            "max_tokens": 40,
-            "system": f"You are an AI assistant that processes text. You must STRICTLY follow the user's instructions without adding any introductory, explanatory, or concluding words. Your response must contain ONLY what the user explicitly requests—nothing more, nothing less.",
+            "max_tokens": 150,
+            "system": f"You are an AI assistant that processes text with absolute precision. You must STRICTLY follow the user's instructions exactly as given—no introductions, explanations, clarifications, or conclusions. Your response must contain ONLY what is explicitly requested—nothing more, nothing less. Do not infer, assume, or provide additional context beyond the given instructions. Maintain clarity, accuracy, and brevity at all times.",
             "messages": [
                 {"role": "user", "content": f"{prompt}\n\n{text}"}
             ],
