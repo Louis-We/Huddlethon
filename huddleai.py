@@ -1,21 +1,46 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 import boto3
 import json
 import os
 import re
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI()
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins
+    allow_credentials=True,
+    allow_methods=["*"],  # Allow all methods
+    allow_headers=["*"],  # Allow all headers
+)
+
 region_name = 'eu-west-1'
 foundation_model = 'anthropic.claude-3-sonnet-20240229-v1:0'
 knowledge_base_id = 'WNCKQMM4ZA'
 data_source_id = 'FAADRXS34P'
 
-session = boto3.Session(profile_name="AdministratorAccess-940482414003")  # Use your AWS SSO profile name
+session = boto3.Session(
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+    aws_session_token=os.getenv('AWS_SESSION_TOKEN'),
+    region_name=region_name
+)
 bedrock_client = session.client('bedrock-runtime', region_name=region_name)
 bedrock_agent_runtime_client = session.client('bedrock-agent-runtime', region_name=region_name)
 
-@app.get("/retrieve/")
-def retrieve_documents(question: str, numberOfResults: int):
+from collections import defaultdict
+import os
+
+@app.post("/retrieve/")
+async def retrieve_documents(request: Request):
+    body = await request.json()
+    question = body.get('question', '')
+    print(question)
     try:
         response = bedrock_agent_runtime_client.retrieve(
             retrievalQuery= {
@@ -24,7 +49,7 @@ def retrieve_documents(question: str, numberOfResults: int):
             knowledgeBaseId=knowledge_base_id,
             retrievalConfiguration= {
                 'vectorSearchConfiguration': {
-                    'numberOfResults': numberOfResults,
+                    'numberOfResults': 5,
                     'overrideSearchType': "HYBRID", # optional
                 }
             }
@@ -49,8 +74,10 @@ def retrieve_documents(question: str, numberOfResults: int):
                 "response": doc
             })
 
-        return {"query": question, "response": processed_results}
+            print (processed_results)
+        return {"query": question, "results": processed_results}
     except Exception as e:
+        print(e)
         return {"error": str(e)}
 
 def text_processor(prompt, text):            
